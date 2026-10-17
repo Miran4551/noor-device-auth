@@ -1,0 +1,7 @@
+node_modules/
+.env
+.env.*
+*.json
+!package.json
+!package-lock.json
+.sa_base64.tmp

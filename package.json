@@ -1,0 +1,14 @@
+{
+  "name": "noor-device-auth-server",
+  "version": "1.0.0",
+  "description": "Trusted Backend Server for One-Device-Per-Account Security & Device Attestation",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node test_device_binding.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "firebase-admin": "^12.0.0"
+  }
+}
