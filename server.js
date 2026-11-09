@@ -306,45 +306,531 @@ app.post('/api/device/unbind', authenticateToken, async (req, res) => {
     }
 });
 
-// 5. POST /api/admin/reset-device
-// Documented Administrative reset for a user's device
-app.post('/api/admin/reset-device', authenticateToken, async (req, res) => {
-    // Check if caller has admin claims
-    if (!req.user.admin) {
-        return res.status(403).json({ error: 'Admin privileges required' });
-    }
+// Serve static files for Noor Admin Dashboard
+app.use(express.static(path.join(__dirname, 'public')));
 
-    const { targetUid, reason } = req.body;
-    if (!targetUid || !reason) {
-        return res.status(400).json({ error: 'Missing targetUid or reason' });
+const ADMIN_EMAILS = ['cursoryousef@gmail.com', 'admin@noor.com'];
+
+// Admin verification middleware
+async function requireAdmin(req, res, next) {
+    const isExplicitAdmin = req.user && (
+        req.user.admin === true || 
+        (req.user.email && ADMIN_EMAILS.includes(req.user.email.toLowerCase()))
+    );
+    if (!isExplicitAdmin) {
+        return res.status(403).json({ error: 'عذراً، صلاحيات المدير مطلوبة للوصول إلى هذه الوظيفة.' });
+    }
+    next();
+}
+
+// -------------------------------------------------------------
+// Noor Admin Management & Subscription Control APIs
+// -------------------------------------------------------------
+
+// Helper to log administrative operations
+async function logAdminAction(adminUid, adminEmail, action, targetUid, details = {}) {
+    try {
+        await db.collection('audit_logs').add({
+            eventType: 'ADMIN_ACTION',
+            adminUid: adminUid || 'SYSTEM',
+            adminEmail: adminEmail || 'admin',
+            action,
+            targetUid,
+            details,
+            timestamp: admin.firestore.FieldValue.serverTimestamp()
+        });
+    } catch (e) {
+        console.error('[Audit Log Error]', e.message);
+    }
+}
+
+// 1. GET /api/admin/metrics
+// Returns summary statistics of users and subscriptions
+app.get('/api/admin/metrics', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const usersResult = await admin.auth().listUsers(1000);
+        const totalAccounts = usersResult.users.length;
+        const disabledAccounts = usersResult.users.filter(u => u.disabled).length;
+
+        const subsSnapshot = await db.collection('subscriptions').get();
+        const now = Date.now();
+        const warningWindowMs = 3 * 24 * 60 * 60 * 1000; // 3 days
+
+        let activeCount = 0;
+        let expiredCount = 0;
+        let suspendedCount = 0;
+        let expiringSoonCount = 0;
+
+        subsSnapshot.forEach(doc => {
+            const data = doc.data();
+            const expiresAtMs = data.expiresAt ? (data.expiresAt.toDate ? data.expiresAt.toDate().getTime() : new Date(data.expiresAt).getTime()) : 0;
+            const isSuspended = data.status === 'suspended';
+            const isExpired = data.status === 'expired' || (expiresAtMs > 0 && expiresAtMs < now);
+            const isExpiringSoon = !isSuspended && !isExpired && (expiresAtMs > now && (expiresAtMs - now) <= warningWindowMs);
+
+            if (isSuspended) {
+                suspendedCount++;
+            } else if (isExpired) {
+                expiredCount++;
+            } else {
+                activeCount++;
+            }
+
+            if (isExpiringSoon) {
+                expiringSoonCount++;
+            }
+        });
+
+        // Also count total bound devices
+        const bindingsSnapshot = await db.collection('device_bindings').get();
+        const boundDevicesCount = bindingsSnapshot.size;
+
+        res.json({
+            totalAccounts,
+            disabledAccounts,
+            activeCount,
+            expiredCount,
+            suspendedCount,
+            expiringSoonCount,
+            boundDevicesCount,
+            timestamp: new Date().toISOString()
+        });
+    } catch (e) {
+        res.status(500).json({ error: 'فشل جلب الإحصائيات: ' + e.message });
+    }
+});
+
+// 2. GET /api/admin/users
+// Returns list of users with their subscription details and device bindings
+app.get('/api/admin/users', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const { search, status, plan } = req.query;
+        const usersResult = await admin.auth().listUsers(1000);
+        const subsSnapshot = await db.collection('subscriptions').get();
+        const bindingsSnapshot = await db.collection('device_bindings').get();
+
+        const subsMap = new Map();
+        subsSnapshot.forEach(doc => subsMap.set(doc.id, doc.data()));
+
+        const bindingsMap = new Map();
+        bindingsSnapshot.forEach(doc => bindingsMap.set(doc.id, doc.data()));
+
+        const now = Date.now();
+
+        let list = usersResult.users.map(u => {
+            const sub = subsMap.get(u.uid) || null;
+            const binding = bindingsMap.get(u.uid) || null;
+
+            let computedStatus = 'pending';
+            let expiresAtMs = null;
+            let startAtMs = null;
+
+            if (sub) {
+                if (sub.expiresAt) {
+                    expiresAtMs = sub.expiresAt.toDate ? sub.expiresAt.toDate().getTime() : new Date(sub.expiresAt).getTime();
+                }
+                if (sub.startAt) {
+                    startAtMs = sub.startAt.toDate ? sub.startAt.toDate().getTime() : new Date(sub.startAt).getTime();
+                }
+
+                if (sub.status === 'suspended' || u.disabled) {
+                    computedStatus = 'suspended';
+                } else if (expiresAtMs && expiresAtMs < now) {
+                    computedStatus = 'expired';
+                } else if (sub.status === 'active') {
+                    computedStatus = 'active';
+                } else {
+                    computedStatus = sub.status || 'pending';
+                }
+            }
+
+            return {
+                uid: u.uid,
+                email: u.email || 'بدون بريد',
+                displayName: u.displayName || '',
+                disabled: u.disabled,
+                isAdmin: !!(u.customClaims && u.customClaims.admin),
+                metadata: {
+                    creationTime: u.metadata.creationTime,
+                    lastSignInTime: u.metadata.lastSignInTime
+                },
+                subscription: sub ? {
+                    plan: sub.plan || 'monthly',
+                    planLabel: sub.planLabel || 'شهري',
+                    status: computedStatus,
+                    rawStatus: sub.status,
+                    startAt: startAtMs ? new Date(startAtMs).toISOString() : null,
+                    expiresAt: expiresAtMs ? new Date(expiresAtMs).toISOString() : null,
+                    adminNotes: sub.adminNotes || '',
+                    lastModifiedBy: sub.lastModifiedBy || ''
+                } : null,
+                deviceBinding: binding ? {
+                    deviceId: binding.deviceId,
+                    status: binding.status,
+                    boundAt: binding.boundAt ? (binding.boundAt.toDate ? binding.boundAt.toDate().toISOString() : binding.boundAt) : null,
+                    lastVerifiedAt: binding.lastVerifiedAt ? (binding.lastVerifiedAt.toDate ? binding.lastVerifiedAt.toDate().toISOString() : binding.lastVerifiedAt) : null,
+                    clientMetadata: binding.clientMetadata || {}
+                } : null
+            };
+        });
+
+        // Apply filters
+        if (search) {
+            const q = search.trim().toLowerCase();
+            list = list.filter(u => 
+                u.email.toLowerCase().includes(q) || 
+                u.uid.toLowerCase().includes(q) ||
+                (u.deviceBinding && u.deviceBinding.deviceId.toLowerCase().includes(q))
+            );
+        }
+
+        if (status && status !== 'all') {
+            list = list.filter(u => u.subscription && u.subscription.status === status);
+        }
+
+        if (plan && plan !== 'all') {
+            list = list.filter(u => u.subscription && u.subscription.plan === plan);
+        }
+
+        res.json({ users: list, total: list.length });
+    } catch (e) {
+        res.status(500).json({ error: 'فشل جلب المستخدمين: ' + e.message });
+    }
+});
+
+// 3. POST /api/admin/users/create
+// Creates a new user with temporary password and subscription
+app.post('/api/admin/users/create', authenticateToken, requireAdmin, async (req, res) => {
+    const { email, password, plan, durationDays, adminNotes } = req.body;
+    if (!email || !password) {
+        return res.status(400).json({ error: 'البريد الإلكتروني وكلمة المرور مطلوبان' });
+    }
+    if (password.length < 6) {
+        return res.status(400).json({ error: 'كلمة المرور يجب ألا تقل عن 6 أحرف' });
     }
 
     try {
-        const bindingRef = db.collection('device_bindings').doc(targetUid);
-        await db.runTransaction(async (transaction) => {
-            transaction.delete(bindingRef);
-            const auditRef = db.collection('audit_logs').doc();
-            transaction.set(auditRef, {
-                eventType: 'ADMIN_DEVICE_RESET',
-                adminUid: req.user.uid,
-                targetUid,
-                reason,
-                timestamp: admin.firestore.FieldValue.serverTimestamp()
+        const newUser = await admin.auth().createUser({
+            email: email.trim(),
+            password: password.trim()
+        });
+
+        const days = parseInt(durationDays, 10) || (plan === 'lifetime' ? 36500 : plan === 'trial' ? 3 : plan === 'yearly' ? 365 : plan === 'semi_annual' ? 180 : plan === 'quarterly' ? 90 : 30);
+        const now = new Date();
+        const expires = new Date(now.getTime() + (days * 24 * 60 * 60 * 1000));
+
+        const planLabels = {
+            trial: 'تجريبي (3 أيام)',
+            monthly: 'شهري (30 يوماً)',
+            quarterly: 'ربع سنوي (3 أشهر)',
+            semi_annual: 'نصف سنوي (6 أشهر)',
+            yearly: 'سنوي (سنة كاملة)',
+            lifetime: 'دائم (مدى الحياة ♾️)',
+            custom: `مخصص (${days} يوماً)`
+        };
+
+        const subData = {
+            uid: newUser.uid,
+            email: newUser.email,
+            status: 'active',
+            plan: plan || 'monthly',
+            planLabel: planLabels[plan] || 'شهري',
+            startAt: admin.firestore.Timestamp.fromDate(now),
+            expiresAt: admin.firestore.Timestamp.fromDate(expires),
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            suspendedAt: null,
+            adminNotes: adminNotes || 'تم الإنشاء بواسطة لوحة الإدارة',
+            lastModifiedBy: req.user.email || req.user.uid
+        };
+
+        await db.collection('subscriptions').doc(newUser.uid).set(subData);
+
+        await logAdminAction(req.user.uid, req.user.email, 'CREATE_USER', newUser.uid, {
+            email: newUser.email,
+            plan: subData.plan,
+            durationDays: days
+        });
+
+        res.json({
+            success: true,
+            message: 'تم إنشاء المستخدم وتفعيل اشتراكه بنجاح',
+            user: {
+                uid: newUser.uid,
+                email: newUser.email
+            }
+        });
+    } catch (e) {
+        res.status(500).json({ error: 'فشل إنشاء المستخدم: ' + e.message });
+    }
+});
+
+// 4. POST /api/admin/users/send-password-reset
+// Sends password reset email or generates reset link
+app.post('/api/admin/users/send-password-reset', authenticateToken, requireAdmin, async (req, res) => {
+    const { email } = req.body;
+    if (!email) {
+        return res.status(400).json({ error: 'البريد الإلكتروني مطلوب' });
+    }
+
+    try {
+        const link = await admin.auth().generatePasswordResetLink(email.trim());
+        await logAdminAction(req.user.uid, req.user.email, 'PASSWORD_RESET_LINK_GENERATED', null, { email });
+
+        res.json({
+            success: true,
+            message: 'تم توليد رابط إعادة تعيين كلمة المرور بنجاح',
+            resetLink: link
+        });
+    } catch (e) {
+        res.status(500).json({ error: 'فشل إرسال أو توليد رابط كلمة المرور: ' + e.message });
+    }
+});
+
+// 5. POST /api/admin/subscriptions/update
+// Update plan, duration, dates, and notes
+app.post('/api/admin/subscriptions/update', authenticateToken, requireAdmin, async (req, res) => {
+    const { uid, plan, durationDays, customExpiresAt, adminNotes, status } = req.body;
+    if (!uid) {
+        return res.status(400).json({ error: 'معرف المستخدم UID مطلوب' });
+    }
+
+    try {
+        const subRef = db.collection('subscriptions').doc(uid);
+        const subDoc = await subRef.get();
+
+        const planLabels = {
+            trial: 'تجريبي (3 أيام)',
+            monthly: 'شهري (30 يوماً)',
+            quarterly: 'ربع سنوي (3 أشهر)',
+            semi_annual: 'نصف سنوي (6 أشهر)',
+            yearly: 'سنوي (سنة كاملة)',
+            lifetime: 'دائم (مدى الحياة ♾️)',
+            custom: 'مخصص'
+        };
+
+        const updateData = {
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            lastModifiedBy: req.user.email || req.user.uid
+        };
+
+        if (adminNotes !== undefined) {
+            updateData.adminNotes = adminNotes;
+        }
+
+        if (plan) {
+            updateData.plan = plan;
+            updateData.planLabel = planLabels[plan] || plan;
+        }
+
+        if (status) {
+            updateData.status = status;
+            if (status === 'suspended') {
+                updateData.suspendedAt = admin.firestore.FieldValue.serverTimestamp();
+            } else if (status === 'active') {
+                updateData.suspendedAt = null;
+            }
+        }
+
+        if (customExpiresAt) {
+            const expDate = new Date(customExpiresAt);
+            if (!isNaN(expDate.getTime())) {
+                updateData.expiresAt = admin.firestore.Timestamp.fromDate(expDate);
+            }
+        } else if (durationDays) {
+            const days = parseInt(durationDays, 10);
+            if (!isNaN(days) && days > 0) {
+                let baseDate = new Date();
+                if (subDoc.exists) {
+                    const currentData = subDoc.data();
+                    if (currentData.expiresAt) {
+                        const currentExp = currentData.expiresAt.toDate ? currentData.expiresAt.toDate() : new Date(currentData.expiresAt);
+                        if (currentExp > baseDate) {
+                            baseDate = currentExp;
+                        }
+                    }
+                }
+                const newExp = new Date(baseDate.getTime() + (days * 24 * 60 * 60 * 1000));
+                updateData.expiresAt = admin.firestore.Timestamp.fromDate(newExp);
+            }
+        }
+
+        if (!subDoc.exists) {
+            const now = new Date();
+            updateData.uid = uid;
+            updateData.createdAt = admin.firestore.FieldValue.serverTimestamp();
+            updateData.startAt = admin.firestore.Timestamp.fromDate(now);
+            if (!updateData.status) updateData.status = 'active';
+            if (!updateData.plan) updateData.plan = 'monthly';
+            if (!updateData.expiresAt) {
+                const exp = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+                updateData.expiresAt = admin.firestore.Timestamp.fromDate(exp);
+            }
+            await subRef.set(updateData);
+        } else {
+            await subRef.update(updateData);
+        }
+
+        await logAdminAction(req.user.uid, req.user.email, 'UPDATE_SUBSCRIPTION', uid, updateData);
+
+        res.json({
+            success: true,
+            message: 'تم تحديث بيانات الاشتراك بنجاح',
+            updated: updateData
+        });
+    } catch (e) {
+        res.status(500).json({ error: 'فشل تحديث الاشتراك: ' + e.message });
+    }
+});
+
+// 6. POST /api/admin/subscriptions/extend
+// Extends an active or expired subscription by N days
+app.post('/api/admin/subscriptions/extend', authenticateToken, requireAdmin, async (req, res) => {
+    const { uid, days } = req.body;
+    const addDays = parseInt(days, 10);
+    if (!uid || isNaN(addDays) || addDays <= 0) {
+        return res.status(400).json({ error: 'معرف المستخدم وعدد الأيام الصحيحة مطلوبة' });
+    }
+
+    try {
+        const subRef = db.collection('subscriptions').doc(uid);
+        const doc = await subRef.get();
+        const now = new Date();
+        let baseDate = now;
+
+        if (doc.exists) {
+            const currentData = doc.data();
+            if (currentData.expiresAt) {
+                const currentExp = currentData.expiresAt.toDate ? currentData.expiresAt.toDate() : new Date(currentData.expiresAt);
+                if (currentExp > now) {
+                    baseDate = currentExp;
+                }
+            }
+        }
+
+        const newExpiresAt = new Date(baseDate.getTime() + (addDays * 24 * 60 * 60 * 1000));
+        await subRef.set({
+            status: 'active',
+            expiresAt: admin.firestore.Timestamp.fromDate(newExpiresAt),
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            lastModifiedBy: req.user.email || req.user.uid
+        }, { merge: true });
+
+        await logAdminAction(req.user.uid, req.user.email, 'EXTEND_SUBSCRIPTION', uid, {
+            addedDays: addDays,
+            newExpiresAt: newExpiresAt.toISOString()
+        });
+
+        res.json({
+            success: true,
+            message: `تم تمديد الاشتراك بنجاح بمقدار ${addDays} يوماً`,
+            expiresAt: newExpiresAt.toISOString()
+        });
+    } catch (e) {
+        res.status(500).json({ error: 'فشل تمديد الاشتراك: ' + e.message });
+    }
+});
+
+// 7. POST /api/admin/subscriptions/toggle-status
+// Suspends or Activates an account / subscription
+app.post('/api/admin/subscriptions/toggle-status', authenticateToken, requireAdmin, async (req, res) => {
+    const { uid, status, disableAuthUser } = req.body;
+    if (!uid || !['active', 'suspended'].includes(status)) {
+        return res.status(400).json({ error: 'معرف المستخدم والحالة (active أو suspended) مطلوبان' });
+    }
+
+    try {
+        const subRef = db.collection('subscriptions').doc(uid);
+        await subRef.set({
+            status: status,
+            suspendedAt: status === 'suspended' ? admin.firestore.FieldValue.serverTimestamp() : null,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            lastModifiedBy: req.user.email || req.user.uid
+        }, { merge: true });
+
+        // Optionally disable or enable in Firebase Auth
+        if (disableAuthUser !== undefined) {
+            await admin.auth().updateUser(uid, {
+                disabled: status === 'suspended'
+            });
+        }
+
+        await logAdminAction(req.user.uid, req.user.email, status === 'suspended' ? 'SUSPEND_SUBSCRIPTION' : 'ACTIVATE_SUBSCRIPTION', uid, {
+            status,
+            authDisabled: status === 'suspended'
+        });
+
+        res.json({
+            success: true,
+            message: status === 'suspended' ? 'تم إيقاف الاشتراك بنجاح' : 'تم استئناف وتفعيل الاشتراك بنجاح'
+        });
+    } catch (e) {
+        res.status(500).json({ error: 'فشل تغيير حالة الاشتراك: ' + e.message });
+    }
+});
+
+// 8. POST /api/admin/users/delete
+// Permanently deletes user from Firebase Auth, Subscriptions, and Device Bindings
+app.post('/api/admin/users/delete', authenticateToken, requireAdmin, async (req, res) => {
+    const { uid, confirm } = req.body;
+    if (!uid || confirm !== true) {
+        return res.status(400).json({ error: 'يرجى تأكيد الحذف النهائي' });
+    }
+
+    try {
+        // Delete from Auth
+        await admin.auth().deleteUser(uid);
+        // Delete subscription
+        await db.collection('subscriptions').doc(uid).delete();
+        // Delete device binding
+        await db.collection('device_bindings').doc(uid).delete();
+
+        await logAdminAction(req.user.uid, req.user.email, 'DELETE_USER', uid);
+
+        res.json({
+            success: true,
+            message: 'تم حذف المستخدم وبياناته نهائياً'
+        });
+    } catch (e) {
+        res.status(500).json({ error: 'فشل حذف المستخدم: ' + e.message });
+    }
+});
+
+// 9. GET /api/admin/audit-logs
+// Returns the audit log of all security and administrative operations
+app.get('/api/admin/audit-logs', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const limit = parseInt(req.query.limit, 10) || 50;
+        const snapshot = await db.collection('audit_logs')
+            .orderBy('timestamp', 'desc')
+            .limit(limit)
+            .get();
+
+        const logs = [];
+        snapshot.forEach(doc => {
+            const data = doc.data();
+            logs.push({
+                id: doc.id,
+                ...data,
+                timestamp: data.timestamp && data.timestamp.toDate ? data.timestamp.toDate().toISOString() : data.timestamp
             });
         });
 
-        res.json({ success: true, message: `Device binding reset for user ${targetUid}` });
+        res.json({ logs });
     } catch (e) {
-        res.status(500).json({ error: e.message });
+        res.status(500).json({ error: 'فشل جلب سجل العمليات: ' + e.message });
     }
 });
 
 const PORT = process.env.PORT || 8080;
 const HOST = process.env.HOST || '0.0.0.0';
 if (require.main === module) {
-    app.listen(PORT, HOST, () => {
-        console.log(`Noor Device Auth Server listening on http://${HOST}:${PORT}`);
+    const server = app.listen(PORT, HOST, () => {
+        console.log(`Noor Device Auth & Admin Server listening on http://${HOST}:${PORT}`);
     });
+    // Set keep-alive timeouts to prevent Cloudflare/Render edge Connection Reset (ECONNRESET)
+    server.keepAliveTimeout = 65000;
+    server.headersTimeout = 66000;
 }
 
 module.exports = { app, checkRateLimit };

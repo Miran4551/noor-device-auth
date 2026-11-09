@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>نور — إدارة التفعيل والاشتراكات</title>
+    <!-- Modern Font: Cairo & Outfit -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800;900&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- Background dynamic ambient orbs -->
+    <div class="ambient-glow glow-cyan"></div>
+    <div class="ambient-glow glow-purple"></div>
+
+    <!-- Login Modal / Screen -->
+    <section id="loginSection" class="view-section active">
+        <div class="login-wrapper">
+            <div class="login-card glass-card">
+                <div class="brand-header">
+                    <img src="logo.png" alt="شعار نور" class="brand-logo" onerror="this.src='data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 100 100\'><circle cx=\'50\' cy=\'50\' r=\'46\' fill=\'%2300E5FF\'/><text x=\'50\' y=\'65\' font-size=\'45\' font-family=\'sans-serif\' font-weight=\'bold\' fill=\'%23121212\' text-anchor=\'middle\'>نور</text></svg>'">
+                    <h1 class="brand-title">نُور للاستنساخ</h1>
+                    <p class="brand-subtitle">بوابة إدارة التفعيل والاشتراكات المركزية</p>
+                </div>
+
+                <form id="loginForm" class="auth-form" onsubmit="handleLogin(event)">
+                    <div class="input-group">
+                        <label for="adminEmail">البريد الإلكتروني للإدارة</label>
+                        <div class="input-field-wrapper">
+                            <svg class="field-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 12a4 4 0 10-8 0 4 4 0 008 0zm0 0v1.5a2.5 2.5 0 005 0V12a9 9 0 10-9 9m4.5-1.206a8.959 8.959 0 01-4.5 1.207"/></svg>
+                            <input type="email" id="adminEmail" required placeholder="cursoryousef@gmail.com" autocomplete="email" dir="ltr">
+                        </div>
+                    </div>
+
+                    <div class="input-group">
+                        <label for="adminPassword">كلمة المرور</label>
+                        <div class="input-field-wrapper">
+                            <svg class="field-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+                            <input type="password" id="adminPassword" required placeholder="••••••••" autocomplete="current-password" dir="ltr">
+                        </div>
+                    </div>
+
+                    <div id="loginAlert" class="alert-box error hidden"></div>
+
+                    <button type="submit" id="btnLogin" class="btn btn-primary btn-block">
+                        <span class="btn-text">تسجيل الدخول للإدارة</span>
+                        <div class="spinner hidden"></div>
+                    </button>
+                    
+                    <div class="login-footer-hint">
+                        <p>الدخول محمي بالتحقق الصارم ومشفر عبر Firebase Authentication</p>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </section>
+
+    <!-- Main Dashboard Application -->
+    <div id="appLayout" class="app-container hidden">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar glass-nav">
+            <div class="sidebar-brand">
+                <img src="logo.png" alt="شعار نور" class="sidebar-logo">
+                <div class="brand-info">
+                    <h2>لوحة نُور</h2>
+                    <span class="badge badge-admin">مدير النظام</span>
+                </div>
+            </div>
+
+            <nav class="sidebar-nav">
+                <a href="#overview" class="nav-item active" onclick="switchTab('overview')">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>
+                    <span>لوحة المؤشرات</span>
+                </a>
+                <a href="#users" class="nav-item" onclick="switchTab('users')">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
+                    <span>المستخدمين والاشتراكات</span>
+                </a>
+                <a href="#audit" class="nav-item" onclick="switchTab('audit')">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                    <span>سجل العمليات والتدقيق</span>
+                </a>
+            </nav>
+
+            <div class="sidebar-user">
+                <div class="user-avatar" id="adminAvatarText">A</div>
+                <div class="user-meta">
+                    <span class="user-email-text" id="adminEmailDisplay">admin@noor.com</span>
+                    <button class="btn-link" onclick="handleLogout()">تسجيل الخروج</button>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <!-- Top bar -->
+            <header class="topbar glass-card">
+                <div class="topbar-title-wrapper">
+                    <h2 id="topbarTitle">لوحة المؤشرات والتحليلات</h2>
+                    <span class="topbar-time" id="currentTime">--:--</span>
+                </div>
+                <div class="topbar-actions">
+                    <button class="btn btn-primary" onclick="openCreateUserModal()">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                        <span>مستخدم جديد</span>
+                    </button>
+                    <button class="btn btn-secondary btn-icon" onclick="refreshCurrentView()" title="تحديث البيانات">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                    </button>
+                </div>
+            </header>
+
+            <div class="tab-content-area">
+                <!-- Tab 1: Overview / Metrics -->
+                <section id="tab-overview" class="dashboard-tab active">
+                    <div class="stats-grid">
+                        <div class="stat-card glass-card">
+                            <div class="stat-icon-wrap icon-cyan">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
+                            </div>
+                            <div class="stat-info">
+                                <span class="stat-label">إجمالي الحسابات</span>
+                                <h3 class="stat-val" id="metricTotal">0</h3>
+                                <span class="stat-detail text-muted">مسجلون في Firebase Auth</span>
+                            </div>
+                        </div>
+
+                        <div class="stat-card glass-card">
+                            <div class="stat-icon-wrap icon-green">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                            </div>
+                            <div class="stat-info">
+                                <span class="stat-label">الاشتراكات النشطة</span>
+                                <h3 class="stat-val text-green" id="metricActive">0</h3>
+                                <span class="stat-detail">صلاحية تفعيل سارية</span>
+                            </div>
+                        </div>
+
+                        <div class="stat-card glass-card">
+                            <div class="stat-icon-wrap icon-amber">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                            </div>
+                            <div class="stat-info">
+                                <span class="stat-label">قريبة من الانتهاء</span>
+                                <h3 class="stat-val text-amber" id="metricExpiringSoon">0</h3>
+                                <span class="stat-detail">خلال أقل من 3 أيام</span>
+                            </div>
+                        </div>
+
+                        <div class="stat-card glass-card">
+                            <div class="stat-icon-wrap icon-coral">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                            </div>
+                            <div class="stat-info">
+                                <span class="stat-label">اشتراكات منتهية</span>
+                                <h3 class="stat-val text-coral" id="metricExpired">0</h3>
+                                <span class="stat-detail">تتطلب تمديد أو تجديد</span>
+                            </div>
+                        </div>
+
+                        <div class="stat-card glass-card">
+                            <div class="stat-icon-wrap icon-purple">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/></svg>
+                            </div>
+                            <div class="stat-info">
+                                <span class="stat-label">موقوفة إدارياً</span>
+                                <h3 class="stat-val text-purple" id="metricSuspended">0</h3>
+                                <span class="stat-detail">معلقة بقرار الإدارة</span>
+                            </div>
+                        </div>
+
+                        <div class="stat-card glass-card">
+                            <div class="stat-icon-wrap icon-blue">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>
+                            </div>
+                            <div class="stat-info">
+                                <span class="stat-label">الأجهزة المربوطة</span>
+                                <h3 class="stat-val" id="metricBoundDevices">0</h3>
+                                <span class="stat-detail">أجهزة معتمدة بالعتاد</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Quick Overview Users Table -->
+                    <div class="section-card glass-card mt-6">
+                        <div class="card-header">
+                            <div>
+                                <h3>أحدث المشتركين</h3>
+                                <p class="text-muted">عرض سريع لآخر الحسابات المسجلة وحالة اشتراكها</p>
+                            </div>
+                            <button class="btn btn-outline" onclick="switchTab('users')">عرض كل المستخدمين ←</button>
+                        </div>
+                        <div class="table-container">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>المستخدم</th>
+                                        <th>خطة الاشتراك</th>
+                                        <th>حالة الاشتراك</th>
+                                        <th>تاريخ الانتهاء</th>
+                                        <th>الجهاز المربوط</th>
+                                        <th>إجراءات سريعة</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="recentUsersTableBody">
+                                    <tr><td colspan="6" class="text-center py-6 text-muted">جارٍ تحميل البيانات...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Tab 2: Users Management -->
+                <section id="tab-users" class="dashboard-tab">
+                    <!-- Filters & Controls Bar -->
+                    <div class="controls-card glass-card">
+                        <div class="search-box">
+                            <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+                            <input type="text" id="userSearchInput" placeholder="ابحث بالبريد الإلكتروني، UID، أو معرف الجهاز..." oninput="debounceFilterUsers()">
+                        </div>
+
+                        <div class="filter-group">
+                            <div class="select-wrapper">
+                                <label>حالة الاشتراك:</label>
+                                <select id="filterStatus" onchange="filterUsers()">
+                                    <option value="all">الكل</option>
+                                    <option value="active">نشط</option>
+                                    <option value="expiring">قريب من الانتهاء</option>
+                                    <option value="expired">منتهي</option>
+                                    <option value="suspended">موقوف</option>
+                                </select>
+                            </div>
+
+                            <div class="select-wrapper">
+                                <label>نوع الباقة:</label>
+                                <select id="filterPlan" onchange="filterUsers()">
+                                    <option value="all">كل الباقات</option>
+                                    <option value="trial">تجريبي</option>
+                                    <option value="monthly">شهري</option>
+                                    <option value="quarterly">ربع سنوي</option>
+                                    <option value="semi_annual">نصف سنوي</option>
+                                    <option value="yearly">سنوي</option>
+                                    <option value="lifetime">دائم (مدى الحياة ♾️)</option>
+                                    <option value="custom">مخصص</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Main Users Table -->
+                    <div class="section-card glass-card mt-4">
+                        <div class="card-header">
+                            <div>
+                                <h3 id="usersListHeading">سجل المستخدمين والتفعيلات</h3>
+                                <p class="text-muted" id="usersCountMeta">عرض 0 مستخدم</p>
+                            </div>
+                        </div>
+
+                        <div class="table-container">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>البريد الإلكتروني / المعرف</th>
+                                        <th>نوع الباقة</th>
+                                        <th>الحالة</th>
+                                        <th>البداية</th>
+                                        <th>الانتهاء</th>
+                                        <th>الجهاز المربوط</th>
+                                        <th>العمليات</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="usersTableBody">
+                                    <tr><td colspan="7" class="text-center py-8 text-muted">جارٍ تحميل المستخدمين...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Tab 3: Audit Logs -->
+                <section id="tab-audit" class="dashboard-tab">
+                    <div class="section-card glass-card">
+                        <div class="card-header">
+                            <div>
+                                <h3>سجل تدقيق العمليات الأمنية والإدارية</h3>
+                                <p class="text-muted">توثيق شامل لكل عمليات التفعيل، التمديد، الإيقاف، وإعادة تعيين الأجهزة</p>
+                            </div>
+                            <button class="btn btn-outline" onclick="loadAuditLogs()">تحديث السجل ⟳</button>
+                        </div>
+
+                        <div class="table-container">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>التاريخ والوقت</th>
+                                        <th>نوع العملية</th>
+                                        <th>المنفذ</th>
+                                        <th>المستخدم المعني (UID)</th>
+                                        <th>التفاصيل والملاحظات</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="auditTableBody">
+                                    <tr><td colspan="5" class="text-center py-8 text-muted">جارٍ تحميل سجل العمليات...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </main>
+    </div>
+
+    <!-- Modal 1: Create User Modal -->
+    <div id="modalCreateUser" class="modal-backdrop hidden">
+        <div class="modal-card glass-card">
+            <div class="modal-header">
+                <h3>إضافة مستخدم جديد وتفعيل اشتراكه</h3>
+                <button class="btn-close" onclick="closeModal('modalCreateUser')">✕</button>
+            </div>
+            <form id="formCreateUser" onsubmit="submitCreateUser(event)">
+                <div class="modal-body">
+                    <div class="input-group">
+                        <label for="newUserEmail">البريد الإلكتروني للمستخدم</label>
+                        <input type="email" id="newUserEmail" required placeholder="user@domain.com" dir="ltr">
+                    </div>
+
+                    <div class="input-group">
+                        <label for="newUserPassword">كلمة المرور المؤقتة (6 خانات على الأقل)</label>
+                        <div class="password-gen-wrap">
+                            <input type="text" id="newUserPassword" required placeholder="كلمة المرور" dir="ltr">
+                            <button type="button" class="btn btn-secondary btn-sm" onclick="generateRandomPassword()">توليد كلمة مرور</button>
+                        </div>
+                    </div>
+
+                    <div class="input-group">
+                        <label for="newUserPlan">نوع باقة الاشتراك</label>
+                        <select id="newUserPlan" onchange="handlePlanSelectionChange(this, 'newUserCustomDaysWrap')">
+                            <option value="trial">تجريبي (3 أيام)</option>
+                            <option value="monthly" selected>شهري (30 يوماً)</option>
+                            <option value="quarterly">ربع سنوي (90 يوماً)</option>
+                            <option value="semi_annual">نصف سنوي (180 يوماً)</option>
+                            <option value="yearly">سنوي (365 يوماً)</option>
+                            <option value="lifetime">دائم (مدى الحياة ♾️)</option>
+                            <option value="custom">مدة مخصصة بالأيام</option>
+                        </select>
+                    </div>
+
+                    <div id="newUserCustomDaysWrap" class="input-group hidden">
+                        <label for="newUserCustomDays">عدد الأيام المخصصة</label>
+                        <input type="number" id="newUserCustomDays" min="1" max="1825" placeholder="مثال: 45">
+                    </div>
+
+                    <div class="input-group">
+                        <label for="newUserNotes">ملاحظات إدارية (اختياري)</label>
+                        <textarea id="newUserNotes" rows="2" placeholder="ملاحظات العميل، رقم الحوالة، إلخ..."></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline" onclick="closeModal('modalCreateUser')">إلغاء</button>
+                    <button type="submit" class="btn btn-primary" id="btnSubmitCreateUser">إنشاء وتفعيل</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal 2: User Detail & Subscription Management -->
+    <div id="modalUserDetails" class="modal-backdrop hidden">
+        <div class="modal-card glass-card modal-lg">
+            <div class="modal-header">
+                <div>
+                    <h3 id="detailEmailHeading">تفاصيل المستخدم</h3>
+                    <span class="user-uid-badge" id="detailUidBadge">UID: ---</span>
+                </div>
+                <button class="btn-close" onclick="closeModal('modalUserDetails')">✕</button>
+            </div>
+            
+            <div class="modal-body user-detail-body">
+                <!-- Status Row -->
+                <div class="detail-status-banner" id="detailStatusBanner">
+                    <div class="status-left">
+                        <span class="status-indicator-dot" id="detailStatusDot"></span>
+                        <div>
+                            <h4 id="detailStatusTitle">الاشتراك نشط</h4>
+                            <p id="detailStatusSubtitle" class="text-muted">ينتهي في: ---</p>
+                        </div>
+                    </div>
+                    <div class="status-actions">
+                        <button type="button" id="btnToggleSuspend" class="btn btn-warning btn-sm" onclick="toggleUserSuspension()">إيقاف الاشتراك مؤقتاً</button>
+                    </div>
+                </div>
+
+                <div class="detail-grid">
+                    <!-- Column 1: Subscription Settings -->
+                    <div class="detail-col">
+                        <h4 class="col-title">إدارة الاشتراك والباقة</h4>
+                        <form id="formUpdateSubscription" onsubmit="submitSubscriptionUpdate(event)">
+                            <div class="input-group">
+                                <label for="editPlan">نوع الباقة</label>
+                                <select id="editPlan">
+                                    <option value="trial">تجريبي (3 أيام)</option>
+                                    <option value="monthly">شهري (30 يوماً)</option>
+                                    <option value="quarterly">ربع سنوي (90 يوماً)</option>
+                                    <option value="semi_annual">نصف سنوي (180 يوماً)</option>
+                                    <option value="yearly">سنوي (365 يوماً)</option>
+                                    <option value="lifetime">دائم (مدى الحياة ♾️)</option>
+                                    <option value="custom">مخصص</option>
+                                </select>
+                            </div>
+
+                            <div class="input-group">
+                                <label for="editExpiresAt">تاريخ ووقت الانتهاء الدقيق</label>
+                                <input type="datetime-local" id="editExpiresAt">
+                            </div>
+
+                            <div class="input-group">
+                                <label for="editAdminNotes">ملاحظات الإدارة</label>
+                                <textarea id="editAdminNotes" rows="3"></textarea>
+                            </div>
+
+                            <button type="submit" class="btn btn-primary btn-sm btn-block">حفظ تعديلات الاشتراك</button>
+                        </form>
+
+                        <div class="quick-extend-box mt-4">
+                            <label>تمديد سريع بعدد أيام:</label>
+                            <div class="extend-btns-row">
+                                <button type="button" class="btn btn-outline btn-sm" onclick="quickExtendDays(3)">+3 أيام</button>
+                                <button type="button" class="btn btn-outline btn-sm" onclick="quickExtendDays(7)">+7 أيام</button>
+                                <button type="button" class="btn btn-outline btn-sm" onclick="quickExtendDays(30)">+شهر</button>
+                                <button type="button" class="btn btn-outline btn-sm" onclick="quickExtendDays(90)">+3 أشهر</button>
+                                <button type="button" class="btn btn-outline btn-sm" onclick="quickExtendDays(365)">+سنة</button>
+                                <button type="button" class="btn btn-primary btn-sm" onclick="setLifetimePlan()" style="grid-column: span 3; font-weight: 800;">♾️ تحويل لاشتراك دائم (مدى الحياة)</button>
+                            </div>
+                            <div class="extend-custom-row mt-2">
+                                <input type="number" id="quickExtendCustomInput" min="1" placeholder="أيام مخصصة...">
+                                <button type="button" class="btn btn-secondary btn-sm" onclick="quickExtendCustom()">تمديد</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Column 2: Account & Security & Device Binding -->
+                    <div class="detail-col">
+                        <h4 class="col-title">أمان الحساب والجهاز المعتمد</h4>
+                        
+                        <div class="device-card glass-panel" id="deviceBindingPanel">
+                            <div class="device-header">
+                                <svg class="device-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>
+                                <div>
+                                    <h5 id="deviceStatusText">الجهاز المعتمد</h5>
+                                    <span class="device-id-mono" id="deviceIdText">لا يوجد جهاز مرتبط حالياً</span>
+                                </div>
+                            </div>
+                            <div class="device-meta-list" id="deviceMetaList">
+                                <!-- Filled by JS -->
+                            </div>
+                            <button type="button" id="btnResetDevice" class="btn btn-warning btn-sm btn-block mt-3" onclick="confirmResetDevice()">إلغاء ربط الجهاز (السماح بجهاز جديد)</button>
+                        </div>
+
+                        <div class="account-actions-card mt-4">
+                            <label>إدارة كلمة المرور وحساب الدخول:</label>
+                            <div class="flex-col gap-2 mt-2">
+                                <button type="button" class="btn btn-secondary btn-sm" onclick="sendPasswordResetLink()">توليد رابط استعادة كلمة المرور</button>
+                                <button type="button" class="btn btn-danger btn-sm" onclick="confirmDeleteUser()">حذف الحساب نهائياً</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline" onclick="closeModal('modalUserDetails')">إغلاق</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal 3: Password Link Modal -->
+    <div id="modalPasswordLink" class="modal-backdrop hidden">
+        <div class="modal-card glass-card">
+            <div class="modal-header">
+                <h3>رابط إعادة تعيين كلمة المرور</h3>
+                <button class="btn-close" onclick="closeModal('modalPasswordLink')">✕</button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted">تم توليد رابط آمن من Firebase Authentication للمستخدم. يمكنك نسخه وإرساله له مباشرة عبر واتساب أو تليغرام:</p>
+                <div class="copy-box mt-3">
+                    <input type="text" id="generatedResetLinkInput" readonly dir="ltr">
+                    <button type="button" class="btn btn-primary btn-sm" onclick="copyResetLink()">نسخ الرابط</button>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline" onclick="closeModal('modalPasswordLink')">تم</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Notification Toast -->
+    <div id="toastNotification" class="toast-card hidden">
+        <span id="toastMessage">عملية ناجحة</span>
+    </div>
+
+    <!-- Firebase SDKs (Compat/Modular for Web Dashboard) -->
+    <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-auth-compat.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
